@@ -1,6 +1,7 @@
 import hashlib
 import json
 import re
+import time
 import uuid
 
 from requests import Session, HTTPError
@@ -250,18 +251,27 @@ class NotionClient(object):
         All API requests on Notion.so are done as POSTs (except the websocket communications).
         """
         url = urljoin(API_BASE_URL, endpoint)
-        response = self.session.post(url, json=data)
-        if response.status_code == 400:
-            logger.error(
-                "Got 400 error attempting to POST to {}, with data: {}".format(
-                    endpoint, json.dumps(data, indent=2)
+        timeout = 60
+        while True:
+            response = self.session.post(url, json=data)
+            if response.status_code == 400:
+                logger.error(
+                    "Got 400 error attempting to POST to {}, with data: {}".format(
+                        endpoint, json.dumps(data, indent=2)
+                    )
                 )
-            )
-            raise HTTPError(
-                response.json().get(
-                    "message", "There was an error (400) submitting the request."
+                raise HTTPError(
+                    response.json().get(
+                        "message",
+                        "There was an error (400) submitting the request.",
+                    )
                 )
-            )
+            elif response.status_code == 429:
+                logger.warning(f"Too Many Requests, retry in: {timeout}s")
+                time.sleep(timeout)
+                timeout *= 2
+                continue
+            break
         response.raise_for_status()
         return response
 
